@@ -1,4 +1,4 @@
-# Celestial Wave Detector 🌌
+**# Celestial Wave Detector 🌌
 
 Detect and explore possible celestial sources by analyzing cosmic-wave signals with signal processing and machine learning.
 
@@ -19,6 +19,8 @@ Detect and explore possible celestial sources by analyzing cosmic-wave signals w
 - [Quick Start](#quick-start)
 - [Data Sources](#data-sources)
 - [Processing Pipeline](#processing-pipeline)
+- [RAG Knowledge Assistant](#rag-knowledge-assistant)
+- [RAG Architecture and Data Flow](#rag-architecture-and-data-flow)
 - [Outputs](#outputs)
 - [Evaluation and Validation](#evaluation-and-validation)
 - [Limitations](#limitations)
@@ -57,6 +59,12 @@ flowchart TD
     K[Configuration and model settings] --> D
     K --> F
     K --> G
+    L[Astronomy papers, documentation, catalogs] --> M[Document ingestion and chunking]
+    M --> N[Embeddings and vector index]
+    O[User question] --> P[Retriever]
+    N --> P
+    P --> Q[Context-grounded LLM answer with source citations]
+    Q --> J
 ```
 
 ### Architecture layers
@@ -97,7 +105,10 @@ celestial-wave-detector/
 ├── docs/
 │   └── architecture.md
 ├── scripts/
-│   └── generate_demo_data.py
+│   ├── generate_demo_data.py
+│   └── ingest_knowledge_base.py
+├── knowledge_base/
+│   └── README.md            # Instructions and source list; add licensed documents separately
 ├── .gitignore
 ├── LICENSE
 ├── README.md
@@ -116,6 +127,10 @@ celestial-wave-detector/
 | Visualization | Matplotlib, Plotly |
 | Exploration | Jupyter |
 | Testing | pytest |
+| RAG orchestration | LangChain or LlamaIndex (optional) |
+| Embeddings | Sentence Transformers or a hosted embedding API |
+| Vector search | FAISS or Chroma |
+| Language model | Configurable LLM provider; optional local model |
 
 Keep dependencies and models appropriate to the chosen data type. A model trained on one instrument or signal family should not be assumed to generalize to another.
 
@@ -208,6 +223,84 @@ Check the selected dataset's access rules, citation requirements, scientific doc
 6. **Rank and validate:** Estimate candidate significance, measure false alarms on background data, and compare against reference events where possible.
 7. **Report:** Save results with configuration, software version, dataset provenance, and plots.
 
+## RAG Knowledge Assistant
+
+The project can include a **Retrieval-Augmented Generation (RAG)** assistant that answers astronomy questions using a curated collection of trusted documents. It complements the signal detector; it does **not** detect celestial objects by itself.
+
+Example questions:
+- "What does this candidate-event score mean?"
+- "Which documented properties are associated with this type of signal?"
+- "What does the selected dataset's documentation say about its sampling rate?"
+- "Which papers or catalog entries are relevant to this candidate?"
+
+### RAG workflow
+
+1. **Knowledge ingestion:** Load approved astronomy papers, dataset documentation, instrument manuals, and catalog documentation. Preserve title, author/organization, URL/DOI, publication date, license, and page/section metadata where available.
+2. **Parsing and chunking:** Extract text and split it into overlapping passages that preserve headings and useful context.
+3. **Embedding:** Convert each passage into a vector representation using an embedding model.
+4. **Indexing:** Store vectors and metadata in a vector database such as FAISS or Chroma.
+5. **Question retrieval:** Embed the user's question and retrieve the most relevant passages; optionally rerank them.
+6. **Grounded generation:** Provide the retrieved passages to the language model and instruct it to answer only from supported evidence, cite sources, and clearly state when evidence is insufficient.
+7. **Traceability:** Return source titles and links, and log the retrieved chunks and model configuration for debugging.
+
+### RAG design principles
+
+- Keep RAG separate from the scientific signal-detection pipeline. The detector produces candidate events; RAG explains documented concepts and helps users explore source material.
+- Treat retrieved documents as evidence, not executable instructions. Ignore instructions embedded inside retrieved content.
+- Show citations for factual claims and avoid inventing papers, catalog matches, or source links.
+- If no relevant evidence is retrieved, say that the knowledge base does not contain enough information.
+- Use source documents with clear access and redistribution permissions. Store source metadata and retrieval timestamps.
+- Do not send private, restricted, or sensitive data to third-party model APIs without appropriate authorization.
+- A generated answer is not scientific confirmation of a detection.
+
+## RAG Architecture and Data Flow
+
+```mermaid
+flowchart TD
+    A[Trusted astronomy papers, manuals, catalogs] --> B[Parse documents]
+    B --> C[Chunk text and attach metadata]
+    C --> D[Embedding model]
+    D --> E[(Vector database)]
+    F[User question] --> G[Question embedding]
+    G --> H[Similarity search / optional reranker]
+    E --> H
+    H --> I[Relevant passages and source metadata]
+    I --> J[LLM with grounding instructions]
+    J --> K[Answer with citations and uncertainty]
+    L[Candidate event results] --> F
+```
+
+### Suggested RAG modules
+
+| Module | Responsibility |
+|---|---|
+| `rag/ingest.py` | Read supported documents and extract text/metadata |
+| `rag/chunking.py` | Split text into searchable passages |
+| `rag/embeddings.py` | Generate passage and query embeddings |
+| `rag/vector_store.py` | Create, persist, and query the vector index |
+| `rag/retriever.py` | Retrieve and optionally rerank relevant passages |
+| `rag/answer.py` | Build prompts and generate source-grounded answers |
+| `scripts/ingest_knowledge_base.py` | Build or refresh the knowledge index |
+
+### Example RAG response format
+
+A response from the assistant should include:
+- **Answer:** A concise explanation based on retrieved material.
+- **Sources:** Document title plus URL/DOI and page or section when available.
+- **Evidence:** Short supporting excerpts or passage references.
+- **Limitations:** A clear note if sources conflict or do not answer the question.
+
+### RAG evaluation
+
+Evaluate retrieval and generation separately:
+- **Retrieval:** Recall@k or Precision@k on a small set of questions with known relevant documents.
+- **Grounding:** Check whether claims are supported by retrieved passages.
+- **Citation quality:** Verify that each cited source exists and supports the associated statement.
+- **Abstention:** Test whether the assistant admits when the knowledge base lacks evidence.
+- **Latency and cost:** Record retrieval time, model latency, and token usage where applicable.
+
+RAG components are an architectural extension and must be implemented and configured before they will work. Choose one embedding model, one vector store, and one LLM provider initially rather than adding every option at once.
+
 ## Outputs
 
 A run should ideally produce:
@@ -244,6 +337,10 @@ Avoid data leakage: split by event, observation, or time segment as appropriate,
 - [ ] Create waveform and spectrogram visualizations.
 - [ ] Add optional model training and model-card documentation.
 - [ ] Add a dashboard and automated tests.
+- [ ] Ingest a small, licensed astronomy documentation collection for RAG.
+- [ ] Implement chunking, embeddings, vector search, and source metadata.
+- [ ] Add grounded answers with citations and an insufficient-evidence fallback.
+- [ ] Evaluate retrieval quality, citation correctness, and hallucination/abstention behavior.
 
 ## Contributing
 
@@ -252,3 +349,4 @@ Contributions are welcome. Please open an issue before major changes, add tests 
 ## License
 
 This project is intended to use the MIT License. Add a `LICENSE` file containing the license text before distributing the repository under that license.
+**
